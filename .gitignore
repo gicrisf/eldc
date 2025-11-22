@@ -13,3 +13,22 @@ eldc-converter-macos
 # Package lock files
 package-lock.json
 bun.lockb
+
+# Added automatically by 'eldev init'.
+/.eldev
+/Eldev-local
+
+*~
+\#*\#
+.\#*
+.DS_Store
+.idea
+*.log
+tmp/
+
+# Emacs package generated files
+*-autoloads.el
+*.elc
+
+# Test coverage files
+coverage/

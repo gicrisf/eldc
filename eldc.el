@@ -89,6 +89,53 @@ checking all converters in the default priority order."
   (expand-file-name "bin" user-emacs-directory)
   "Directory to store downloaded converter binaries.")
 
+;;; Embedded Converter Scripts
+
+(defconst eldc--python-converter-script
+  "#!/usr/bin/env python3
+import sys
+import json
+import base64
+import yaml
+
+try:
+    if len(sys.argv) > 1:
+        json_string = base64.b64decode(sys.argv[1]).decode('utf-8')
+    else:
+        json_string = sys.stdin.read()
+
+    data = json.loads(json_string)
+    yaml_content = yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False, width=float('inf'))
+    yaml_base64 = base64.b64encode(yaml_content.encode('utf-8')).decode('ascii')
+    print(yaml_base64)
+except Exception as error:
+    print(f'Error: {error}', file=sys.stderr)
+    sys.exit(1)
+"
+  "Python script for JSON to YAML conversion.")
+
+(defconst eldc--js-converter-script
+  "import { load, dump } from 'js-yaml';
+
+try {
+  let jsonString;
+  if (process.argv[2]) {
+    jsonString = Buffer.from(process.argv[2], 'base64').toString('utf8');
+  } else {
+    const fs = require('fs');
+    jsonString = fs.readFileSync(0, 'utf-8');
+  }
+  const data = load(jsonString);
+  const yamlContent = dump(data, { indent: 2, lineWidth: -1, noRefs: true, sortKeys: false });
+  const yamlBase64 = Buffer.from(yamlContent, 'utf8').toString('base64');
+  console.log(yamlBase64);
+} catch (error) {
+  console.error('Error:', error.message);
+  process.exit(1);
+}
+"
+  "JavaScript script for JSON to YAML conversion.")
+
 ;;; Helper Functions
 
 (defun eldc--get-output-filename (extension)
@@ -134,39 +181,51 @@ Returns converter command list if found, nil otherwise."
       (list (expand-file-name "json-to-yaml" dir)))
      (t nil))))
 
-(defun eldc--try-python-converter (dir)
-  "Try to find Python converter in DIR.
-Returns converter command list if found, nil otherwise."
-  (when (and (or (executable-find "python3")
-                 (executable-find "python"))
-             (file-exists-p (expand-file-name "json-to-yaml.py" dir)))
-    (list (or (executable-find "python3")
-              (executable-find "python"))
-          (expand-file-name "json-to-yaml.py" dir))))
+(defun eldc--create-temp-script (script-content extension)
+  "Create a temporary script file with SCRIPT-CONTENT and EXTENSION.
+Returns the path to the created file."
+  (let ((temp-file (make-temp-file "eldc-converter-" nil extension)))
+    (with-temp-file temp-file
+      (insert script-content))
+    ;; Make executable on Unix-like systems
+    (unless (eq system-type 'windows-nt)
+      (set-file-modes temp-file #o755))
+    temp-file))
 
-(defun eldc--try-bun-converter (dir)
-  "Try to find Bun converter in DIR.
+(defun eldc--try-python-converter ()
+  "Try to find Python runtime and create temporary converter script.
 Returns converter command list if found, nil otherwise."
-  (when (and (or (executable-find "bun")
-                 (file-exists-p (expand-file-name "~/.bun/bin/bun")))
-             (file-exists-p (expand-file-name "json-to-yaml.js" dir)))
-    (list (or (executable-find "bun")
-              (expand-file-name "~/.bun/bin/bun"))
-          "run"
-          (expand-file-name "json-to-yaml.js" dir))))
+  (when (or (executable-find "python3")
+            (executable-find "python"))
+    (let ((script-file (eldc--create-temp-script eldc--python-converter-script ".py")))
+      (list (or (executable-find "python3")
+                (executable-find "python"))
+            script-file))))
 
-(defun eldc--try-node-converter (dir)
-  "Try to find Node.js converter in DIR.
+(defun eldc--try-bun-converter ()
+  "Try to find Bun runtime and create temporary converter script.
 Returns converter command list if found, nil otherwise."
-  (when (and (executable-find "node")
-             (file-exists-p (expand-file-name "json-to-yaml.js" dir)))
-    (list (executable-find "node")
-          (expand-file-name "json-to-yaml.js" dir))))
+  (when (or (executable-find "bun")
+            (file-exists-p (expand-file-name "~/.bun/bin/bun")))
+    (let ((script-file (eldc--create-temp-script eldc--js-converter-script ".js")))
+      (list (or (executable-find "bun")
+                (expand-file-name "~/.bun/bin/bun"))
+            "run"
+            script-file))))
+
+(defun eldc--try-node-converter ()
+  "Try to find Node.js runtime and create temporary converter script.
+Returns converter command list if found, nil otherwise."
+  (when (executable-find "node")
+    (let ((script-file (eldc--create-temp-script eldc--js-converter-script ".js")))
+      (list (executable-find "node")
+            script-file))))
 
 (defun eldc--find-converter ()
   "Find available JSON-to-YAML converter.
 Respects `eldc-preferred-converter' if set, otherwise uses default priority:
-binary > python > bun > node."
+binary > python > bun > node.
+Creates temporary converter scripts on-the-fly as needed."
   (let ((dir (or (and load-file-name (file-name-directory load-file-name))
                  (and buffer-file-name (file-name-directory buffer-file-name))
                  default-directory)))
@@ -177,16 +236,16 @@ binary > python > bun > node."
         ((eq eldc-preferred-converter 'binary)
          (eldc--try-binary-converter dir))
         ((eq eldc-preferred-converter 'python)
-         (eldc--try-python-converter dir))
+         (eldc--try-python-converter))
         ((eq eldc-preferred-converter 'bun)
-         (eldc--try-bun-converter dir))
+         (eldc--try-bun-converter))
         ((eq eldc-preferred-converter 'node)
-         (eldc--try-node-converter dir))))
+         (eldc--try-node-converter))))
      ;; Fall back to default priority order
      (eldc--try-binary-converter dir)
-     (eldc--try-python-converter dir)
-     (eldc--try-bun-converter dir)
-     (eldc--try-node-converter dir))))
+     (eldc--try-python-converter)
+     (eldc--try-bun-converter)
+     (eldc--try-node-converter))))
 
 ;;; Public API
 
@@ -212,7 +271,8 @@ Example: config.el -> config.json"
 Parses the last s-expression in the buffer as an alist.
 Output filename is derived from current buffer's filename.
 Example: config.el -> config.yaml
-Requires JSON-to-YAML converter (binary, python, bun, or node)."
+Requires JSON-to-YAML converter (binary, python, bun, or node).
+Creates temporary converter scripts on-the-fly as needed."
   (interactive)
   (lexical-let* ((alist (eldc--get-alist))
                  (json-encoding-pretty-print nil)  ; Compact JSON
@@ -220,7 +280,14 @@ Requires JSON-to-YAML converter (binary, python, bun, or node)."
                  ;; Base64 encode JSON to avoid shell escaping issues
                  (json-base64 (base64-encode-string json-content t))
                  (output-file (eldc--get-output-filename "yaml"))
-                 (converter (eldc--find-converter)))
+                 (converter (eldc--find-converter))
+                 ;; Extract script file path for cleanup (second or third element)
+                 (script-file (when converter
+                                (or (and (string-match-p "\\.\\(py\\|js\\)$" (nth 1 converter))
+                                         (nth 1 converter))
+                                    (and (>= (length converter) 3)
+                                         (string-match-p "\\.js$" (nth 2 converter))
+                                         (nth 2 converter))))))
     (if converter
         (let ((default-directory (file-name-directory output-file)))
           (deferred:$
@@ -233,11 +300,17 @@ Requires JSON-to-YAML converter (binary, python, bun, or node)."
                                ;; Write YAML output to file
                                (with-temp-file output-file
                                  (insert yaml-content))
-                               (message "Generated %s successfully!" output-file))))
+                               (message "Generated %s successfully!" output-file))
+                             ;; Clean up temporary script file
+                             (when (and script-file (file-exists-p script-file))
+                               (delete-file script-file))))
            (deferred:error it
                            (lambda (err)
+                             ;; Clean up temporary script file on error
+                             (when (and script-file (file-exists-p script-file))
+                               (delete-file script-file))
                              (message "Error running converter: %s" err)))))
-      (message "No converter found. Install python/bun/node with json-to-yaml script or set eldc-preferred-converter."))))
+      (message "No converter found. Install python/bun/node or set eldc-preferred-converter."))))
 
 (provide 'eldc)
 ;;; eldc.el ends here
