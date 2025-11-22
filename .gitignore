@@ -1,0 +1,15 @@
+# Compiled Emacs Lisp
+*.elc
+
+# Node modules (if installed)
+node_modules/
+
+# Build output
+eldc-converter
+eldc-converter.exe
+eldc-converter-linux
+eldc-converter-macos
+
+# Package lock files
+package-lock.json
+bun.lockb
