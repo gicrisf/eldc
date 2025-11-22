@@ -202,7 +202,8 @@ Example: config.el -> config.json"
          (json-content (json-encode alist))
          (output-file (eldc--get-output-filename "json")))
     (with-temp-file output-file
-      (insert json-content))
+      (insert json-content)
+      (insert "\n"))
     (message "Generated %s successfully!" output-file)))
 
 ;;;###autoload
