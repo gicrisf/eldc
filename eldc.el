@@ -45,7 +45,7 @@
 ;; The last s-expression in the buffer will be evaluated and converted.
 ;;
 ;; For YAML conversion, you need the converter binary.
-;; Build it with: bun install && bun run build
+;; Build it with: cd eldc-j2y && cargo build --release
 ;; Or download from: https://github.com/gicrisf/eldc/releases
 
 ;;; Code:
