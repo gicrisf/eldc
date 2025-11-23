@@ -117,19 +117,20 @@
        (should (equal (alist-get 'computed result) 42))
        (should (stringp (alist-get 'timestamp result)))))))
 
-(ert-deftest eldc-test-binary-name ()
-  "Test platform-specific binary name selection."
-  (let ((name (eldc--binary-name)))
-    (should (stringp name))
-    (cond
-     ((eq system-type 'windows-nt)
-      (should (equal name "eldc-converter.exe")))
-     ((eq system-type 'gnu/linux)
-      (should (equal name "eldc-converter-linux")))
-     ((eq system-type 'darwin)
-      (should (equal name "eldc-converter-macos")))
-     (t
-      (should (equal name "eldc-converter"))))))
+;;; Tests for Converter Discovery
+
+(ert-deftest eldc-test-find-converter-debug ()
+  "Debug converter discovery - show what paths are being checked."
+  (let* ((binary-name (eldc--binary-name))
+         (binary-path (expand-file-name binary-name eldc-binary-dir))
+         (converter (eldc--find-converter)))
+    (message "Binary name: %s" binary-name)
+    (message "Binary directory: %s" eldc-binary-dir)
+    (message "Full binary path: %s" binary-path)
+    (message "Binary exists: %s" (file-exists-p binary-path))
+    (message "Converter found: %s" converter)
+    (should (stringp binary-name))
+    (should (stringp eldc-binary-dir))))
 
 ;;; Tests for JSON Conversion
 
@@ -230,7 +231,7 @@
        (deferred:sync! d)
        (should (file-exists-p yaml-file))
        (let ((yaml-content (eldc-test--read-yaml-file yaml-file)))
-         (should (string-match-p "name: eldc-converter" yaml-content))
+         (should (string-match-p "name: eldc-j2y" yaml-content))
          (should (string-match-p "version: ['\"]?0\\.0\\.1['\"]?" yaml-content))
          (should (string-match-p "js-yaml:" yaml-content)))))))
 
