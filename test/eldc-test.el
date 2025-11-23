@@ -204,33 +204,9 @@
 
 ;;; Tests for YAML Conversion (requires converter)
 
-(defun eldc-test--ensure-binary ()
-  "Ensure converter binary is available and download if needed."
-  (unless (eldc--find-converter)
-    (let* ((binary-name (eldc--binary-name))
-           (download-url (concat eldc-converter-url binary-name))
-           (target-dir eldc-binary-dir)
-           (target-path (expand-file-name binary-name target-dir)))
-
-      ;; Create binary directory if it doesn't exist
-      (unless (file-directory-p target-dir)
-        (make-directory target-dir t))
-
-      (message "Test setup: Downloading converter binary...")
-
-      ;; Synchronous download for tests
-      (url-copy-file download-url target-path t)
-
-      ;; Set executable permissions on Unix-like systems
-      (unless (eq system-type 'windows-nt)
-        (set-file-modes target-path #o755))
-
-      (message "Test setup: Binary downloaded to %s" target-path))))
-
 (ert-deftest eldc-test-yaml-simple ()
   "Test YAML conversion with simple.el."
-  :tags '(:integration :network)
-  (eldc-test--ensure-binary)
+  :tags '(:integration)
   (eldc-test--with-data-file
    "simple.el"
    (lambda ()
@@ -245,8 +221,7 @@
 
 (ert-deftest eldc-test-yaml-package ()
   "Test YAML conversion with package.el."
-  :tags '(:integration :network)
-  (eldc-test--ensure-binary)
+  :tags '(:integration)
   (eldc-test--with-data-file
    "package.el"
    (lambda ()
@@ -262,8 +237,7 @@
 
 (ert-deftest eldc-test-roundtrip-json-yaml-json ()
   "Test roundtrip conversion: alist → JSON → YAML → JSON."
-  :tags '(:integration :network)
-  (eldc-test--ensure-binary)
+  :tags '(:integration)
   (eldc-test--with-data-file
    "simple.el"
    (lambda ()
@@ -339,8 +313,7 @@
 
 (ert-deftest eldc-test-plist-yaml-order-preservation ()
   "Test that property list order is preserved through YAML conversion."
-  :tags '(:integration :network)
-  (eldc-test--ensure-binary)
+  :tags '(:integration)
   (eldc-test--with-data-file
    "plist.el"
    (lambda ()
@@ -382,8 +355,7 @@
 
 (ert-deftest eldc-test-boolean-encoding-yaml ()
   "Test that t and :json-false encode correctly to YAML booleans."
-  :tags '(:integration :network)
-  (eldc-test--ensure-binary)
+  :tags '(:integration)
   (eldc-test--with-data-file
    "booleans.el"
    (lambda ()

@@ -11,3 +11,32 @@
 ;; Configure elisp-lint for mixed indentation (standard Emacs Lisp style)
 (with-eval-after-load 'elisp-lint
   (setq-default indent-tabs-mode nil))
+
+;; Build Rust binary before running tests
+(add-hook 'eldev-test-hook
+          (lambda ()
+            (let* ((binary-name (if (eq system-type 'windows-nt)
+                                    "eldc-j2y.exe"
+                                  "eldc-j2y"))
+                   (binary-path (expand-file-name
+                                 (concat "bin/" binary-name) user-emacs-directory))
+                   (cargo-manifest "eldc-j2y/Cargo.toml"))
+              (unless (file-exists-p binary-path)
+                (message "Building Rust binary for tests...")
+                ;; Ensure target directory exists
+                (unless (file-directory-p (file-name-directory binary-path))
+                  (make-directory (file-name-directory binary-path) t))
+                ;; Build the binary with cargo
+                (eldev-call-process "cargo" (list "build" "--release"
+                                                  "--manifest-path" cargo-manifest))
+                ;; Copy binary to expected location
+                (let ((built-binary (expand-file-name
+                                    binary-name
+                                    (expand-file-name "release"
+                                                      (expand-file-name "target"
+                                                                        "eldc-j2y")))))
+                  (copy-file built-binary binary-path)
+                  ;; Set executable permissions on Unix-like systems
+                  (unless (eq system-type 'windows-nt)
+                    (set-file-modes binary-path #o755))
+                  (message "Rust binary built and installed to %s" binary-path))))))
