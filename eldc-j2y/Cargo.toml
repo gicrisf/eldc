@@ -1,0 +1,9 @@
+[package]
+name = "eldc-j2y"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde_json = "1.0"
+serde_yaml = "0.9"
+base64 = "0.21"
