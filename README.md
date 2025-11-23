@@ -28,7 +28,7 @@ M-x eldc-yaml  ; Creates my-config.yaml
 
 - **Emacs 25.1+**
 - **deferred.el** package
-- **For YAML**: Python with PyYAML (`pip install pyyaml`) OR Javascript runtime like Node or Bun with js-yaml
+- **For YAML**: Pre-compiled binary converter (Rust-based, available from releases)
 
 ## Dynamic Configuration
 
@@ -41,16 +41,16 @@ Use any Emacs Lisp expression:
     (platform . ,(symbol-name system-type))))
 ```
 
-## Configuration
+## Installation
 
-```elisp
-;; Prefer Python converter (optional)
-(setq eldc-preferred-converter 'python)
+For YAML conversion, download the pre-compiled binary for your platform from [GitHub Releases](https://github.com/gicrisf/eldc/releases) and place it in `~/.emacs.d/bin/`.
 
-;; Options: nil (auto), 'binary, 'python, 'bun, 'node
+Or build from source:
+```bash
+cd eldc-j2y
+cargo build --release
+# Copy binary to ~/.emacs.d/bin/
 ```
-
-(I have no binaries to release yet)
 
 ## License
 
