@@ -260,5 +260,57 @@
          (should (string-match-p "version: ['\"]?0\\.0\\.1['\"]?" yaml-content))
          (should (string-match-p "js-yaml:" yaml-content)))))))
 
+(ert-deftest eldc-test-roundtrip-json-yaml-json ()
+  "Test roundtrip conversion: alist → JSON → YAML → JSON."
+  :tags '(:integration :network)
+  (eldc-test--ensure-binary)
+  (eldc-test--with-data-file
+   "simple.el"
+   (lambda ()
+     (let* ((original-alist (eldc--get-alist))
+            (json-file (eldc--get-output-filename "json"))
+            (yaml-file (eldc--get-output-filename "yaml")))
+
+       ;; Step 1: Convert to JSON
+       (eldc-json)
+       (should (file-exists-p json-file))
+       (let ((json-data-1 (eldc-test--read-json-file json-file)))
+
+         ;; Step 2: Convert to YAML
+         (let ((d (eldc-yaml)))
+           (deferred:sync! d))
+         (should (file-exists-p yaml-file))
+
+         ;; Step 3: Convert YAML back to JSON using the binary
+         (let* ((yaml-content (eldc-test--read-yaml-file yaml-file))
+                (yaml-b64 (base64-encode-string yaml-content t))
+                (converter-path (car (eldc--find-converter)))
+                (command (concat converter-path " --reverse " yaml-b64))
+                (json-b64 (shell-command-to-string command))
+                (json-string (base64-decode-string (string-trim json-b64)))
+                (json-data-2 (json-read-from-string json-string)))
+
+           ;; Verify: original alist matches final JSON
+           (should (equal (alist-get 'name original-alist)
+                         (alist-get 'name json-data-1)))
+           (should (equal (alist-get 'name original-alist)
+                         (alist-get 'name json-data-2)))
+           (should (equal (alist-get 'version original-alist)
+                         (alist-get 'version json-data-1)))
+           (should (equal (alist-get 'version original-alist)
+                         (alist-get 'version json-data-2)))
+           (should (equal (alist-get 'enabled original-alist)
+                         (alist-get 'enabled json-data-1)))
+           (should (equal (alist-get 'enabled original-alist)
+                         (alist-get 'enabled json-data-2)))
+
+           ;; Verify: first JSON matches final JSON
+           (should (equal (alist-get 'name json-data-1)
+                         (alist-get 'name json-data-2)))
+           (should (equal (alist-get 'version json-data-1)
+                         (alist-get 'version json-data-2)))
+           (should (equal (alist-get 'enabled json-data-1)
+                         (alist-get 'enabled json-data-2)))))))))
+
 (provide 'eldc-test)
 ;;; eldc-test.el ends here
