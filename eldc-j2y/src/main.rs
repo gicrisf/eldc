@@ -5,13 +5,29 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() < 2 {
-        eprintln!("Error: Missing base64-encoded JSON argument");
+        eprintln!("Usage: eldc-j2y [--reverse] <base64-encoded-data>");
+        eprintln!("  Default: JSON to YAML conversion");
+        eprintln!("  --reverse: YAML to JSON conversion");
         process::exit(1);
     }
 
-    let base64_input = &args[1];
+    let (reverse_mode, base64_input) = if args.len() == 3 && args[1] == "--reverse" {
+        (true, &args[2])
+    } else if args.len() == 2 {
+        (false, &args[1])
+    } else {
+        eprintln!("Error: Invalid arguments");
+        eprintln!("Usage: eldc-j2y [--reverse] <base64-encoded-data>");
+        process::exit(1);
+    };
 
-    match convert_json_to_yaml(base64_input) {
+    let result = if reverse_mode {
+        convert_yaml_to_json(base64_input)
+    } else {
+        convert_json_to_yaml(base64_input)
+    };
+
+    match result {
         Ok(output) => println!("{}", output),
         Err(e) => {
             eprintln!("Error: {}", e);
@@ -35,6 +51,28 @@ fn convert_json_to_yaml(base64_input: &str) -> Result<String, String> {
         .map_err(|e| format!("Failed to convert to YAML: {}", e))?;
 
     let base64_output = BASE64_STANDARD.encode(yaml_string.as_bytes());
+
+    Ok(base64_output)
+}
+
+fn convert_yaml_to_json(base64_input: &str) -> Result<String, String> {
+    let bytes = BASE64_STANDARD
+        .decode(base64_input)
+        .map_err(|e| format!("Failed to decode base64: {}", e))?;
+
+    let yaml_string = String::from_utf8(bytes)
+        .map_err(|e| format!("Invalid UTF-8 in decoded input: {}", e))?;
+
+    let yaml_value: serde_yaml::Value = serde_yaml::from_str(&yaml_string)
+        .map_err(|e| format!("Failed to parse YAML: {}", e))?;
+
+    let json_value: serde_json::Value = serde_json::to_value(&yaml_value)
+        .map_err(|e| format!("Failed to convert to JSON: {}", e))?;
+
+    let json_string = serde_json::to_string(&json_value)
+        .map_err(|e| format!("Failed to serialize JSON: {}", e))?;
+
+    let base64_output = BASE64_STANDARD.encode(json_string.as_bytes());
 
     Ok(base64_output)
 }
@@ -94,5 +132,57 @@ mod tests {
         let result = convert_json_to_yaml(&input);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid UTF-8"));
+    }
+
+    #[test]
+    fn test_simple_yaml_to_json() {
+        let yaml = "key: value\n";
+        let input = BASE64_STANDARD.encode(yaml.as_bytes());
+        let result = convert_yaml_to_json(&input).unwrap();
+
+        let decoded = BASE64_STANDARD.decode(result).unwrap();
+        let json_str = String::from_utf8(decoded).unwrap();
+        let json_value: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        assert_eq!(json_value["key"], "value");
+    }
+
+    #[test]
+    fn test_nested_yaml_to_json() {
+        let yaml = "person:\n  name: John\n  age: 30\n";
+        let input = BASE64_STANDARD.encode(yaml.as_bytes());
+        let result = convert_yaml_to_json(&input).unwrap();
+
+        let decoded = BASE64_STANDARD.decode(result).unwrap();
+        let json_str = String::from_utf8(decoded).unwrap();
+        let json_value: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        assert_eq!(json_value["person"]["name"], "John");
+        assert_eq!(json_value["person"]["age"], 30);
+    }
+
+    #[test]
+    fn test_invalid_yaml() {
+        let invalid_yaml = "key: [unclosed array";
+        let input = BASE64_STANDARD.encode(invalid_yaml.as_bytes());
+        let result = convert_yaml_to_json(&input);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to parse YAML"));
+    }
+
+    #[test]
+    fn test_roundtrip_json_yaml_json() {
+        let original_json = r#"{"name":"Alice","scores":[95,87,92]}"#;
+        let json_input = BASE64_STANDARD.encode(original_json.as_bytes());
+
+        let yaml_output = convert_json_to_yaml(&json_input).unwrap();
+        let json_output = convert_yaml_to_json(&yaml_output).unwrap();
+
+        let decoded = BASE64_STANDARD.decode(json_output).unwrap();
+        let json_str = String::from_utf8(decoded).unwrap();
+        let final_value: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let original_value: serde_json::Value = serde_json::from_str(original_json).unwrap();
+
+        assert_eq!(final_value, original_value);
     }
 }
