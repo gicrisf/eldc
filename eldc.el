@@ -72,6 +72,13 @@
   (expand-file-name "bin" user-emacs-directory)
   "Directory to store downloaded converter binaries.")
 
+(defvar eldc-json-extension "json"
+  "Preferred file extension for JSON output files.")
+
+(defvar eldc-yaml-extension "yaml"
+  "Preferred file extension for YAML output files.
+Common alternatives: \"yaml\" or \"yml\".")
+
 ;;; Helper Functions
 
 (defun eldc--get-output-filename (extension)
@@ -161,7 +168,7 @@ Example: config.el -> config.json"
   (let* ((alist (eldc--get-alist))
          (json-encoding-pretty-print t)
          (json-content (json-encode alist))
-         (output-file (eldc--get-output-filename "json")))
+         (output-file (eldc--get-output-filename eldc-json-extension)))
     (with-temp-file output-file
       (insert json-content)
       (insert "\n"))
@@ -180,7 +187,7 @@ Requires JSON-to-YAML converter binary."
                  (json-content (json-encode alist))
                  ;; Base64 encode JSON to avoid shell escaping issues
                  (json-base64 (base64-encode-string json-content t))
-                 (output-file (eldc--get-output-filename "yaml"))
+                 (output-file (eldc--get-output-filename eldc-yaml-extension))
                  (converter (eldc--find-converter)))
     (if converter
         (let ((default-directory (file-name-directory output-file)))

@@ -52,6 +52,18 @@ cargo build --release
 # Copy binary to ~/.emacs.d/bin/
 ```
 
+## Configuration
+
+You can customize the file extensions for output files:
+
+```elisp
+;; Change YAML extension from "yaml" to "yml"
+(setq eldc-yaml-extension "yml")
+
+;; JSON extension (default is "json")
+(setq eldc-json-extension "json")
+```
+
 ## License
 
 GPL-3.0-or-later
