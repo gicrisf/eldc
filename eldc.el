@@ -15,7 +15,9 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-;; Author: Giovanni Crisalfi
+;; Author: Giovanni Crisalfi <giovanni.crisalfi@protonmail.com>
+;; Created: 2025-11-22
+;; Modified: 2025-11-23
 ;; Version: 0.4.0
 ;; Package-Requires: ((emacs "25.1") (deferred "0.5.1"))
 ;; Keywords: tools, data, conversion, yaml, json
@@ -23,35 +25,31 @@
 
 ;;; Commentary:
 
-;; This package provides functions to convert Emacs Lisp data structures
-;; (alists) to various output formats like JSON and YAML.
+;; Convert Emacs Lisp data structures to JSON and YAML files.
 ;;
-;; Key features:
-;; - Convert alists to JSON or YAML format
-;; - Automatic output file naming based on source file
-;; - Pre-compiled binaries for YAML conversion
-;; - Supports dynamic alist generation with any Emacs Lisp expression
+;; Particularly useful to manage configuration files (package.json, GitHub
+;; Actions, etc.) by writing them in Emacs Lisp and exporting to standard
+;; formats.  The last s-expression in the buffer is evaluated, enabling
+;; both static data and dynamic generation.
 ;;
-;; Usage:
-;;   1. In your .el file, write an expression that evaluates to an alist.
-;;      This can be:
-;;      - A literal alist: '((key . "value") ...)
-;;      - A function call: (my-config-generator)
-;;      - A lambda: ((lambda () ...))
-;;      - Any expression using let, backquote, etc.
-;;   2. Run: M-x eldc-json  (creates foo.json from foo.el)
-;;      Or:  M-x eldc-yaml (creates foo.yaml from foo.el)
+;; Quick start:
+;;   1. Create a .el file with an alist or plist:
+;;      '(:name "my-app" :version "1.0.0")
+;;   2. Run M-x eldc-json or M-x eldc-yaml
+;;   3. Output file is created automatically (foo.el -> foo.json)
 ;;
-;; The last s-expression in the buffer will be evaluated and converted.
+;; Features:
+;; - JSON conversion using built-in json-encode (no dependencies)
+;; - YAML conversion via optional binary converter (auto-downloads on first use)
+;; - Dynamic data generation using any Emacs Lisp expression
+;; - Hooks for pre/post-processing
 ;;
-;; For YAML conversion, you need the converter binary.
-;; Build it with: cd eldc-j2y && cargo build --release
-;; Or download from: https://github.com/gicrisf/eldc/releases
+;; For more examples and documentation, see:
+;; https://github.com/gicrisf/eldc
 
 ;;; Code:
 
 (require 'json)
-(require 'cl)
 (require 'deferred)
 
 ;;; Configuration
@@ -131,15 +129,7 @@ Returns the evaluated alist or signals an error if parsing fails."
 
 (defun eldc--find-converter ()
   "Find available JSON-to-YAML converter binary in eldc-binary-dir.
-Returns converter command list if found, nil otherwise.
-
-TODO: If binary not found, automatically download from eldc-converter-url.
-This will require:
-  1. Release binary upstream to GitHub releases
-  2. Implement download function using url-retrieve or similar
-  3. Handle platform detection for correct binary download
-  4. Verify binary integrity (checksum validation)
-  5. Set executable permissions on Unix-like systems"
+Returns converter command list if found, nil otherwise."
   (let ((binary-path (expand-file-name (eldc--binary-name) eldc-binary-dir)))
     (when (file-exists-p binary-path)
       (list binary-path))))
@@ -208,9 +198,9 @@ Output filename is derived from current buffer's filename.
 Example: config.el -> config.yaml
 Requires JSON-to-YAML converter binary."
   (interactive)
-  (lexical-let* ((data (eldc--get-alist))
-                 (output-file (eldc--get-output-filename eldc-yaml-extension))
-                 (converter (eldc--find-converter)))
+  (let* ((data (eldc--get-alist))
+         (output-file (eldc--get-output-filename eldc-yaml-extension))
+         (converter (eldc--find-converter)))
     (run-hook-with-args 'eldc-yaml-before-export-hook data output-file)
     (if converter
         (let* ((json-encoding-pretty-print nil)  ; Compact JSON
@@ -234,7 +224,7 @@ Requires JSON-to-YAML converter binary."
                            (lambda (err)
                              (message "Error running converter: %s" err)))))
       ;; Binary not found - attempt to download it
-      (if (yes-or-no-p "Converter binary not found. Download it now? ")
+      (if (yes-or-no-p "Converter binary not found.  Download it now? ")
           (progn
             (eldc-download-binary)
             (message "Binary download started. Please wait and retry eldc-yaml once download completes."))
