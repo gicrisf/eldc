@@ -373,5 +373,190 @@
          (should (or (string-match-p "optional: null" yaml-content)
                      (string-match-p "optional: ~" yaml-content))))))))
 
+;;; Tests for Hooks
+
+(ert-deftest eldc-test-json-before-export-hook ()
+  "Test that eldc-json-before-export-hook is called with correct arguments."
+  (eldc-test--with-data-file
+   "simple.el"
+   (lambda ()
+     (let ((hook-called nil)
+           (hook-data nil)
+           (hook-file nil))
+       ;; Add test hook
+       (add-hook 'eldc-json-before-export-hook
+                 (lambda (data file)
+                   (setq hook-called t
+                         hook-data data
+                         hook-file file)))
+       (unwind-protect
+           (progn
+             (eldc-json)
+             ;; Verify hook was called
+             (should hook-called)
+             ;; Verify data is JSON-encodable object
+             (should hook-data)
+             (should (equal (alist-get 'name hook-data) "test-package"))
+             ;; Verify file path is correct
+             (should hook-file)
+             (should (string-suffix-p "simple.json" hook-file)))
+         ;; Cleanup: remove test hook
+         (setq eldc-json-before-export-hook nil))))))
+
+(ert-deftest eldc-test-json-after-export-hook ()
+  "Test that eldc-json-after-export-hook is called after successful export."
+  (eldc-test--with-data-file
+   "simple.el"
+   (lambda ()
+     (let ((hook-called nil)
+           (hook-file nil))
+       ;; Add test hook
+       (add-hook 'eldc-json-after-export-hook
+                 (lambda (file)
+                   (setq hook-called t
+                         hook-file file)))
+       (unwind-protect
+           (progn
+             (eldc-json)
+             ;; Verify hook was called
+             (should hook-called)
+             ;; Verify file exists
+             (should hook-file)
+             (should (file-exists-p hook-file))
+             (should (string-suffix-p "simple.json" hook-file)))
+         ;; Cleanup: remove test hook
+         (setq eldc-json-after-export-hook nil))))))
+
+(ert-deftest eldc-test-json-hooks-execution-order ()
+  "Test that JSON hooks execute in correct order (before, then after)."
+  (eldc-test--with-data-file
+   "simple.el"
+   (lambda ()
+     (let ((execution-order nil))
+       ;; Add hooks that record execution order
+       (add-hook 'eldc-json-before-export-hook
+                 (lambda (data file)
+                   (push 'before execution-order)))
+       (add-hook 'eldc-json-after-export-hook
+                 (lambda (file)
+                   (push 'after execution-order)))
+       (unwind-protect
+           (progn
+             (eldc-json)
+             ;; Verify hooks executed in correct order
+             (should (equal (reverse execution-order) '(before after))))
+         ;; Cleanup: remove test hooks
+         (setq eldc-json-before-export-hook nil
+               eldc-json-after-export-hook nil))))))
+
+(ert-deftest eldc-test-yaml-before-export-hook ()
+  "Test that eldc-yaml-before-export-hook is called with correct arguments."
+  :tags '(:integration)
+  (eldc-test--with-data-file
+   "simple.el"
+   (lambda ()
+     (let ((hook-called nil)
+           (hook-data nil)
+           (hook-file nil))
+       ;; Add test hook
+       (add-hook 'eldc-yaml-before-export-hook
+                 (lambda (data file)
+                   (setq hook-called t
+                         hook-data data
+                         hook-file file)))
+       (unwind-protect
+           (progn
+             (let ((d (eldc-yaml)))
+               ;; Wait for deferred to complete
+               (deferred:sync! d))
+             ;; Verify hook was called
+             (should hook-called)
+             ;; Verify data is JSON-encodable object
+             (should hook-data)
+             (should (equal (alist-get 'name hook-data) "test-package"))
+             ;; Verify file path is correct
+             (should hook-file)
+             (should (string-suffix-p "simple.yaml" hook-file)))
+         ;; Cleanup: remove test hook
+         (setq eldc-yaml-before-export-hook nil))))))
+
+(ert-deftest eldc-test-yaml-after-export-hook ()
+  "Test that eldc-yaml-after-export-hook is called after successful export."
+  :tags '(:integration)
+  (eldc-test--with-data-file
+   "simple.el"
+   (lambda ()
+     (let ((hook-called nil)
+           (hook-file nil))
+       ;; Add test hook
+       (add-hook 'eldc-yaml-after-export-hook
+                 (lambda (file)
+                   (setq hook-called t
+                         hook-file file)))
+       (unwind-protect
+           (progn
+             (let ((d (eldc-yaml)))
+               ;; Wait for deferred to complete
+               (deferred:sync! d))
+             ;; Verify hook was called
+             (should hook-called)
+             ;; Verify file exists
+             (should hook-file)
+             (should (file-exists-p hook-file))
+             (should (string-suffix-p "simple.yaml" hook-file)))
+         ;; Cleanup: remove test hook
+         (setq eldc-yaml-after-export-hook nil))))))
+
+(ert-deftest eldc-test-yaml-hooks-execution-order ()
+  "Test that YAML hooks execute in correct order (before, then after)."
+  :tags '(:integration)
+  (eldc-test--with-data-file
+   "simple.el"
+   (lambda ()
+     (let ((execution-order nil))
+       ;; Add hooks that record execution order
+       (add-hook 'eldc-yaml-before-export-hook
+                 (lambda (data file)
+                   (push 'before execution-order)))
+       (add-hook 'eldc-yaml-after-export-hook
+                 (lambda (file)
+                   (push 'after execution-order)))
+       (unwind-protect
+           (progn
+             (let ((d (eldc-yaml)))
+               ;; Wait for deferred to complete
+               (deferred:sync! d))
+             ;; Verify hooks executed in correct order
+             (should (equal (reverse execution-order) '(before after))))
+         ;; Cleanup: remove test hooks
+         (setq eldc-yaml-before-export-hook nil
+               eldc-yaml-after-export-hook nil))))))
+
+(ert-deftest eldc-test-multiple-hooks ()
+  "Test that multiple hooks can be added and all execute."
+  (eldc-test--with-data-file
+   "simple.el"
+   (lambda ()
+     (let ((hook1-called nil)
+           (hook2-called nil)
+           (hook3-called nil))
+       ;; Add multiple hooks
+       (add-hook 'eldc-json-before-export-hook
+                 (lambda (data file) (setq hook1-called t)))
+       (add-hook 'eldc-json-before-export-hook
+                 (lambda (data file) (setq hook2-called t)))
+       (add-hook 'eldc-json-after-export-hook
+                 (lambda (file) (setq hook3-called t)))
+       (unwind-protect
+           (progn
+             (eldc-json)
+             ;; Verify all hooks were called
+             (should hook1-called)
+             (should hook2-called)
+             (should hook3-called))
+         ;; Cleanup: remove test hooks
+         (setq eldc-json-before-export-hook nil
+               eldc-json-after-export-hook nil))))))
+
 (provide 'eldc-test)
 ;;; eldc-test.el ends here

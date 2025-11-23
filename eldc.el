@@ -16,7 +16,7 @@
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;; Author: Giovanni Crisalfi
-;; Version: 0.3.0
+;; Version: 0.4.0
 ;; Package-Requires: ((emacs "25.1") (deferred "0.5.1"))
 ;; Keywords: tools, data, conversion, yaml, json
 ;; URL: https://github.com/gicrisf/eldc
@@ -78,6 +78,30 @@
 (defvar eldc-yaml-extension "yaml"
   "Preferred file extension for YAML output files.
 Common alternatives: \"yaml\" or \"yml\".")
+
+(defvar eldc-json-before-export-hook nil
+  "Hook run before exporting to JSON.
+Functions are called with two arguments: DATA and OUTPUT-FILE.
+DATA is the JSON-encodable Emacs Lisp object to be exported.
+OUTPUT-FILE is the target file path.
+Hook functions can modify the data or perform side effects.")
+
+(defvar eldc-json-after-export-hook nil
+  "Hook run after successfully exporting to JSON.
+Functions are called with one argument: OUTPUT-FILE.
+OUTPUT-FILE is the path to the generated JSON file.")
+
+(defvar eldc-yaml-before-export-hook nil
+  "Hook run before exporting to YAML.
+Functions are called with two arguments: DATA and OUTPUT-FILE.
+DATA is the JSON-encodable Emacs Lisp object to be exported.
+OUTPUT-FILE is the target file path.
+Hook functions can modify the data or perform side effects.")
+
+(defvar eldc-yaml-after-export-hook nil
+  "Hook run after successfully exporting to YAML.
+Functions are called with one argument: OUTPUT-FILE.
+OUTPUT-FILE is the path to the generated YAML file.")
 
 ;;; Helper Functions
 
@@ -160,37 +184,40 @@ to eldc-binary-dir."
 
 ;;;###autoload
 (defun eldc-json ()
-  "Export alist from buffer to JSON file.
-Parses the last s-expression in the buffer as an alist.
+  "Export data from buffer to JSON file.
+Parses the last s-expression in the buffer as a JSON-encodable object.
 Output filename is derived from current buffer's filename.
 Example: config.el -> config.json"
   (interactive)
-  (let* ((alist (eldc--get-alist))
-         (json-encoding-pretty-print t)
-         (json-content (json-encode alist))
+  (let* ((data (eldc--get-alist))
          (output-file (eldc--get-output-filename eldc-json-extension)))
-    (with-temp-file output-file
-      (insert json-content)
-      (insert "\n"))
+    (run-hook-with-args 'eldc-json-before-export-hook data output-file)
+    (let* ((json-encoding-pretty-print t)
+           (json-content (json-encode data)))
+      (with-temp-file output-file
+        (insert json-content)
+        (insert "\n")))
+    (run-hook-with-args 'eldc-json-after-export-hook output-file)
     (message "Generated %s successfully!" output-file)))
 
 ;;;###autoload
 (defun eldc-yaml ()
-  "Export alist from buffer to YAML file.
-Parses the last s-expression in the buffer as an alist.
+  "Export data from buffer to YAML file.
+Parses the last s-expression in the buffer as a JSON-encodable object.
 Output filename is derived from current buffer's filename.
 Example: config.el -> config.yaml
 Requires JSON-to-YAML converter binary."
   (interactive)
-  (lexical-let* ((alist (eldc--get-alist))
-                 (json-encoding-pretty-print nil)  ; Compact JSON
-                 (json-content (json-encode alist))
-                 ;; Base64 encode JSON to avoid shell escaping issues
-                 (json-base64 (base64-encode-string json-content t))
+  (lexical-let* ((data (eldc--get-alist))
                  (output-file (eldc--get-output-filename eldc-yaml-extension))
                  (converter (eldc--find-converter)))
+    (run-hook-with-args 'eldc-yaml-before-export-hook data output-file)
     (if converter
-        (let ((default-directory (file-name-directory output-file)))
+        (let* ((json-encoding-pretty-print nil)  ; Compact JSON
+               (json-content (json-encode data))
+               ;; Base64 encode JSON to avoid shell escaping issues
+               (json-base64 (base64-encode-string json-content t))
+               (default-directory (file-name-directory output-file)))
           (deferred:$
            ;; Pass base64-encoded JSON as command line argument
            (apply 'deferred:process (append converter (list json-base64)))
@@ -201,6 +228,7 @@ Requires JSON-to-YAML converter binary."
                                ;; Write YAML output to file
                                (with-temp-file output-file
                                  (insert yaml-content))
+                               (run-hook-with-args 'eldc-yaml-after-export-hook output-file)
                                (message "Generated %s successfully!" output-file))))
            (deferred:error it
                            (lambda (err)
