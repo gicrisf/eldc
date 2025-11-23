@@ -100,7 +100,15 @@ Returns the evaluated alist or signals an error if parsing fails."
 
 (defun eldc--find-converter ()
   "Find available JSON-to-YAML converter binary in eldc-binary-dir.
-Returns converter command list if found, nil otherwise."
+Returns converter command list if found, nil otherwise.
+
+TODO: If binary not found, automatically download from eldc-converter-url.
+This will require:
+  1. Release binary upstream to GitHub releases
+  2. Implement download function using url-retrieve or similar
+  3. Handle platform detection for correct binary download
+  4. Verify binary integrity (checksum validation)
+  5. Set executable permissions on Unix-like systems"
   (let ((binary-path (expand-file-name (eldc--binary-name) eldc-binary-dir)))
     (when (file-exists-p binary-path)
       (list binary-path))))
