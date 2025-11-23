@@ -312,5 +312,57 @@
            (should (equal (alist-get 'enabled json-data-1)
                          (alist-get 'enabled json-data-2)))))))))
 
+(ert-deftest eldc-test-plist-order-preservation ()
+  "Test that property list order is preserved through JSON conversion."
+  (eldc-test--with-data-file
+   "plist.el"
+   (lambda ()
+     (eldc-json)
+     (let* ((json-file (eldc--get-output-filename "json"))
+            (json-string (with-temp-buffer
+                          (insert-file-contents json-file)
+                          (buffer-string))))
+       (should (file-exists-p json-file))
+       (message "Generated JSON:\n%s" json-string)
+       ;; Check if keys appear in order in the JSON string
+       (let ((name-pos (string-match "\"name\"" json-string))
+             (version-pos (string-match "\"version\"" json-string))
+             (dependencies-pos (string-match "\"dependencies\"" json-string)))
+         (should name-pos)
+         (should version-pos)
+         (should dependencies-pos)
+         (message "Positions: name=%s version=%s dependencies=%s"
+                  name-pos version-pos dependencies-pos)
+         ;; Verify order: name should come before version before dependencies
+         (should (< name-pos version-pos))
+         (should (< version-pos dependencies-pos)))))))
+
+(ert-deftest eldc-test-plist-yaml-order-preservation ()
+  "Test that property list order is preserved through YAML conversion."
+  :tags '(:integration :network)
+  (eldc-test--ensure-binary)
+  (eldc-test--with-data-file
+   "plist.el"
+   (lambda ()
+     (let ((yaml-file (eldc--get-output-filename "yaml"))
+           (d (eldc-yaml)))
+       ;; Wait for deferred to complete
+       (deferred:sync! d)
+       (should (file-exists-p yaml-file))
+       (let ((yaml-content (eldc-test--read-yaml-file yaml-file)))
+         (message "Generated YAML:\n%s" yaml-content)
+         ;; Check if keys appear in order in the YAML string
+         (let ((name-pos (string-match "^name:" yaml-content))
+               (version-pos (string-match "^version:" yaml-content))
+               (dependencies-pos (string-match "^dependencies:" yaml-content)))
+           (should name-pos)
+           (should version-pos)
+           (should dependencies-pos)
+           (message "Positions: name=%s version=%s dependencies=%s"
+                    name-pos version-pos dependencies-pos)
+           ;; Verify order: name should come before version before dependencies
+           (should (< name-pos version-pos))
+           (should (< version-pos dependencies-pos))))))))
+
 (provide 'eldc-test)
 ;;; eldc-test.el ends here

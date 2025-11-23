@@ -16,7 +16,7 @@
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;; Author: Giovanni Crisalfi
-;; Version: 0.1.0
+;; Version: 0.2.0
 ;; Package-Requires: ((emacs "25.1") (deferred "0.5.1"))
 ;; Keywords: tools, data, conversion, yaml, json
 ;; URL: https://github.com/gicrisf/eldc
