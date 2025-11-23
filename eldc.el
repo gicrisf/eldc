@@ -116,6 +116,42 @@ This will require:
 ;;; Public API
 
 ;;;###autoload
+(defun eldc-download-binary ()
+  "Download the eldc-j2y converter binary from GitHub releases.
+Automatically detects platform and downloads the appropriate binary
+to eldc-binary-dir."
+  (interactive)
+  (let* ((binary-name (eldc--binary-name))
+         (download-url (concat eldc-converter-url binary-name))
+         (target-dir eldc-binary-dir)
+         (target-path (expand-file-name binary-name target-dir)))
+
+    ;; Create binary directory if it doesn't exist
+    (unless (file-directory-p target-dir)
+      (make-directory target-dir t))
+
+    (message "Downloading %s from %s..." binary-name download-url)
+
+    (url-retrieve
+     download-url
+     (lambda (status target-path binary-name)
+       (if (plist-get status :error)
+           (message "Failed to download binary: %s" (plist-get status :error))
+         ;; Skip HTTP headers
+         (goto-char (point-min))
+         (re-search-forward "\n\n")
+         ;; Write binary content to file
+         (let ((binary-content (buffer-substring (point) (point-max))))
+           (with-temp-file target-path
+             (set-buffer-multibyte nil)
+             (insert binary-content))
+           ;; Set executable permissions on Unix-like systems
+           (unless (eq system-type 'windows-nt)
+             (set-file-modes target-path #o755))
+           (message "Successfully downloaded %s to %s" binary-name target-path))))
+     (list target-path binary-name))))
+
+;;;###autoload
 (defun eldc-json ()
   "Export alist from buffer to JSON file.
 Parses the last s-expression in the buffer as an alist.
@@ -162,7 +198,12 @@ Requires JSON-to-YAML converter binary."
            (deferred:error it
                            (lambda (err)
                              (message "Error running converter: %s" err)))))
-      (message "No converter binary found. Download from %s or build from source." eldc-converter-url))))
+      ;; Binary not found - attempt to download it
+      (if (yes-or-no-p "Converter binary not found. Download it now? ")
+          (progn
+            (eldc-download-binary)
+            (message "Binary download started. Please wait and retry eldc-yaml once download completes."))
+        (message "No converter binary found. Download from %s or build from source." eldc-converter-url)))))
 
 (provide 'eldc)
 ;;; eldc.el ends here

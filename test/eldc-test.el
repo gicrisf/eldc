@@ -204,9 +204,33 @@
 
 ;;; Tests for YAML Conversion (requires converter)
 
+(defun eldc-test--ensure-binary ()
+  "Ensure converter binary is available and download if needed."
+  (unless (eldc--find-converter)
+    (let* ((binary-name (eldc--binary-name))
+           (download-url (concat eldc-converter-url binary-name))
+           (target-dir eldc-binary-dir)
+           (target-path (expand-file-name binary-name target-dir)))
+
+      ;; Create binary directory if it doesn't exist
+      (unless (file-directory-p target-dir)
+        (make-directory target-dir t))
+
+      (message "Test setup: Downloading converter binary...")
+
+      ;; Synchronous download for tests
+      (url-copy-file download-url target-path t)
+
+      ;; Set executable permissions on Unix-like systems
+      (unless (eq system-type 'windows-nt)
+        (set-file-modes target-path #o755))
+
+      (message "Test setup: Binary downloaded to %s" target-path))))
+
 (ert-deftest eldc-test-yaml-simple ()
   "Test YAML conversion with simple.el."
-  :expected-result (if (eldc--find-converter) :passed :failed)
+  :tags '(:integration :network)
+  (eldc-test--ensure-binary)
   (eldc-test--with-data-file
    "simple.el"
    (lambda ()
@@ -221,7 +245,8 @@
 
 (ert-deftest eldc-test-yaml-package ()
   "Test YAML conversion with package.el."
-  :expected-result (if (eldc--find-converter) :passed :failed)
+  :tags '(:integration :network)
+  (eldc-test--ensure-binary)
   (eldc-test--with-data-file
    "package.el"
    (lambda ()
@@ -231,7 +256,7 @@
        (deferred:sync! d)
        (should (file-exists-p yaml-file))
        (let ((yaml-content (eldc-test--read-yaml-file yaml-file)))
-         (should (string-match-p "name: eldc-j2y" yaml-content))
+         (should (string-match-p "name: eldc-converter" yaml-content))
          (should (string-match-p "version: ['\"]?0\\.0\\.1['\"]?" yaml-content))
          (should (string-match-p "js-yaml:" yaml-content)))))))
 
