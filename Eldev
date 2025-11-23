@@ -20,23 +20,24 @@
                                   "eldc-j2y"))
                    (binary-path (expand-file-name
                                  (concat "bin/" binary-name) user-emacs-directory))
-                   (cargo-manifest "eldc-j2y/Cargo.toml"))
-              (unless (file-exists-p binary-path)
-                (message "Building Rust binary for tests...")
+                   (cargo-manifest "eldc-j2y/Cargo.toml")
+                   (built-binary (expand-file-name
+                                 binary-name
+                                 (expand-file-name "release"
+                                                   (expand-file-name "target"
+                                                                     "eldc-j2y")))))
+              ;; Always run cargo build - it's smart enough to skip if nothing changed
+              (message "Ensuring Rust binary is up to date...")
+              (eldev-call-process "cargo" (list "build" "--release"
+                                                "--manifest-path" cargo-manifest))
+              ;; Copy binary to expected location if it's missing or outdated
+              (when (or (not (file-exists-p binary-path))
+                        (file-newer-than-file-p built-binary binary-path))
                 ;; Ensure target directory exists
                 (unless (file-directory-p (file-name-directory binary-path))
                   (make-directory (file-name-directory binary-path) t))
-                ;; Build the binary with cargo
-                (eldev-call-process "cargo" (list "build" "--release"
-                                                  "--manifest-path" cargo-manifest))
-                ;; Copy binary to expected location
-                (let ((built-binary (expand-file-name
-                                    binary-name
-                                    (expand-file-name "release"
-                                                      (expand-file-name "target"
-                                                                        "eldc-j2y")))))
-                  (copy-file built-binary binary-path)
-                  ;; Set executable permissions on Unix-like systems
-                  (unless (eq system-type 'windows-nt)
-                    (set-file-modes binary-path #o755))
-                  (message "Rust binary built and installed to %s" binary-path))))))
+                (copy-file built-binary binary-path t)
+                ;; Set executable permissions on Unix-like systems
+                (unless (eq system-type 'windows-nt)
+                  (set-file-modes binary-path #o755))
+                (message "Rust binary installed to %s" binary-path)))))
