@@ -364,5 +364,42 @@
            (should (< name-pos version-pos))
            (should (< version-pos dependencies-pos))))))))
 
+(ert-deftest eldc-test-boolean-encoding-json ()
+  "Test that t and :json-false encode correctly to JSON booleans."
+  (eldc-test--with-data-file
+   "booleans.el"
+   (lambda ()
+     (eldc-json)
+     (let* ((json-file (eldc--get-output-filename "json"))
+            (json-data (eldc-test--read-json-file json-file)))
+       (should (file-exists-p json-file))
+       ;; t should encode to JSON true
+       (should (eq (alist-get 'enabled json-data) t))
+       ;; :json-false should encode to JSON false (reads back as :json-false)
+       (should (eq (alist-get 'disabled json-data) :json-false))
+       ;; nil should encode to JSON null
+       (should (eq (alist-get 'optional json-data) nil))))))
+
+(ert-deftest eldc-test-boolean-encoding-yaml ()
+  "Test that t and :json-false encode correctly to YAML booleans."
+  :tags '(:integration :network)
+  (eldc-test--ensure-binary)
+  (eldc-test--with-data-file
+   "booleans.el"
+   (lambda ()
+     (let ((yaml-file (eldc--get-output-filename "yaml"))
+           (d (eldc-yaml)))
+       ;; Wait for deferred to complete
+       (deferred:sync! d)
+       (should (file-exists-p yaml-file))
+       (let ((yaml-content (eldc-test--read-yaml-file yaml-file)))
+         (message "Generated YAML:\n%s" yaml-content)
+         ;; Check that booleans are not quoted
+         (should (string-match-p "enabled: true" yaml-content))
+         (should (string-match-p "disabled: false" yaml-content))
+         ;; null values can be represented as null or ~
+         (should (or (string-match-p "optional: null" yaml-content)
+                     (string-match-p "optional: ~" yaml-content))))))))
+
 (provide 'eldc-test)
 ;;; eldc-test.el ends here

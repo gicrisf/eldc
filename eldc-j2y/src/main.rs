@@ -185,4 +185,21 @@ mod tests {
 
         assert_eq!(final_value, original_value);
     }
+
+    #[test]
+    fn test_boolean_values() {
+        let json_with_bools = r#"{"enabled":true,"disabled":false,"maybe":null}"#;
+        let input = BASE64_STANDARD.encode(json_with_bools.as_bytes());
+        let result = convert_json_to_yaml(&input).unwrap();
+
+        let decoded = BASE64_STANDARD.decode(result).unwrap();
+        let yaml_str = String::from_utf8(decoded).unwrap();
+
+        println!("YAML output:\n{}", yaml_str);
+
+        // Check that booleans are not quoted
+        assert!(yaml_str.contains("enabled: true"));
+        assert!(yaml_str.contains("disabled: false"));
+        assert!(yaml_str.contains("maybe: null") || yaml_str.contains("maybe: ~"));
+    }
 }
