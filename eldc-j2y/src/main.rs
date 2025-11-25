@@ -5,26 +5,35 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() < 2 {
-        eprintln!("Usage: eldc-j2y [--reverse] <base64-encoded-data>");
+        eprintln!("Usage: eldc-j2y [--reverse|--xml] <base64-encoded-data>");
         eprintln!("  Default: JSON to YAML conversion");
         eprintln!("  --reverse: YAML to JSON conversion");
+        eprintln!("  --xml: JSON to XML conversion");
         process::exit(1);
     }
 
-    let (reverse_mode, base64_input) = if args.len() == 3 && args[1] == "--reverse" {
-        (true, &args[2])
+    let (mode, base64_input) = if args.len() == 3 {
+        match args[1].as_str() {
+            "--reverse" => ("reverse", &args[2]),
+            "--xml" => ("xml", &args[2]),
+            _ => {
+                eprintln!("Error: Invalid flag '{}'", args[1]);
+                eprintln!("Usage: eldc-j2y [--reverse|--xml] <base64-encoded-data>");
+                process::exit(1);
+            }
+        }
     } else if args.len() == 2 {
-        (false, &args[1])
+        ("yaml", &args[1])
     } else {
         eprintln!("Error: Invalid arguments");
-        eprintln!("Usage: eldc-j2y [--reverse] <base64-encoded-data>");
+        eprintln!("Usage: eldc-j2y [--reverse|--xml] <base64-encoded-data>");
         process::exit(1);
     };
 
-    let result = if reverse_mode {
-        convert_yaml_to_json(base64_input)
-    } else {
-        convert_json_to_yaml(base64_input)
+    let result = match mode {
+        "reverse" => convert_yaml_to_json(base64_input),
+        "xml" => convert_json_to_xml(base64_input),
+        _ => convert_json_to_yaml(base64_input),
     };
 
     match result {
@@ -73,6 +82,28 @@ fn convert_yaml_to_json(base64_input: &str) -> Result<String, String> {
         .map_err(|e| format!("Failed to serialize JSON: {}", e))?;
 
     let base64_output = BASE64_STANDARD.encode(json_string.as_bytes());
+
+    Ok(base64_output)
+}
+
+fn convert_json_to_xml(base64_input: &str) -> Result<String, String> {
+    let bytes = BASE64_STANDARD
+        .decode(base64_input)
+        .map_err(|e| format!("Failed to decode base64: {}", e))?;
+
+    let json_string = String::from_utf8(bytes)
+        .map_err(|e| format!("Invalid UTF-8 in decoded input: {}", e))?;
+
+    let json_value: serde_json::Value = serde_json::from_str(&json_string)
+        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+
+    // Use to_string_with_root to provide the root element name
+    // This is a quick solution, but I should improve the root selection
+    // Possibly, the content should come with a root already
+    let xml_string = quick_xml::se::to_string_with_root("root", &json_value)
+        .map_err(|e| format!("Failed to convert to XML: {}", e))?;
+
+    let base64_output = BASE64_STANDARD.encode(xml_string.as_bytes());
 
     Ok(base64_output)
 }
@@ -201,5 +232,77 @@ mod tests {
         assert!(yaml_str.contains("enabled: true"));
         assert!(yaml_str.contains("disabled: false"));
         assert!(yaml_str.contains("maybe: null") || yaml_str.contains("maybe: ~"));
+    }
+
+    #[test]
+    fn test_simple_json_to_xml() {
+        let input = "eyJrZXkiOiAidmFsdWUifQ=="; // {"key": "value"}
+        let result = convert_json_to_xml(input).unwrap();
+
+        let decoded = BASE64_STANDARD.decode(result).unwrap();
+        let xml_str = String::from_utf8(decoded).unwrap();
+
+        println!("XML output:\n{}", xml_str);
+
+        assert!(xml_str.contains("<root>"));
+        assert!(xml_str.contains("<key>value</key>"));
+        assert!(xml_str.contains("</root>"));
+    }
+
+    #[test]
+    fn test_nested_json_to_xml() {
+        let json = r#"{"person":{"name":"John","age":30}}"#;
+        let input = BASE64_STANDARD.encode(json.as_bytes());
+        let result = convert_json_to_xml(&input).unwrap();
+
+        let decoded = BASE64_STANDARD.decode(result).unwrap();
+        let xml_str = String::from_utf8(decoded).unwrap();
+
+        println!("Nested XML output:\n{}", xml_str);
+
+        assert!(xml_str.contains("<root>"));
+        assert!(xml_str.contains("<person>"));
+        assert!(xml_str.contains("<name>John</name>"));
+        assert!(xml_str.contains("<age>30</age>"));
+        assert!(xml_str.contains("</root>"));
+    }
+
+    #[test]
+    fn test_array_json_to_xml() {
+        let json = r#"{"items":["a","b","c"]}"#;
+        let input = BASE64_STANDARD.encode(json.as_bytes());
+        let result = convert_json_to_xml(&input);
+
+        assert!(result.is_ok());
+
+        let decoded = BASE64_STANDARD.decode(result.unwrap()).unwrap();
+        let xml_str = String::from_utf8(decoded).unwrap();
+
+        println!("Array XML output:\n{}", xml_str);
+    }
+
+    #[test]
+    fn test_xml_boolean_values() {
+        let json_with_bools = r#"{"enabled":true,"disabled":false,"maybe":null}"#;
+        let input = BASE64_STANDARD.encode(json_with_bools.as_bytes());
+        let result = convert_json_to_xml(&input).unwrap();
+
+        let decoded = BASE64_STANDARD.decode(result).unwrap();
+        let xml_str = String::from_utf8(decoded).unwrap();
+
+        println!("XML with booleans:\n{}", xml_str);
+
+        assert!(xml_str.contains("<root>"));
+        assert!(xml_str.contains("<enabled>true</enabled>"));
+        assert!(xml_str.contains("<disabled>false</disabled>"));
+        assert!(xml_str.contains("</root>"));
+    }
+
+    #[test]
+    fn test_invalid_json_to_xml() {
+        let input = BASE64_STANDARD.encode(b"{invalid json}");
+        let result = convert_json_to_xml(&input);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to parse JSON"));
     }
 }

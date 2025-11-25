@@ -1,9 +1,10 @@
 [package]
 name = "eldc-j2y"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 
 [dependencies]
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_yaml = "0.9"
+quick-xml = { version = "0.38", features = ["serialize"] }
 base64 = "0.21"
