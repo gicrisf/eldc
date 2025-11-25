@@ -33,11 +33,14 @@
   "Clean up generated output files for SOURCE-FILE."
   (let* ((base (file-name-sans-extension source-file))
          (json-file (concat base ".json"))
-         (yaml-file (concat base ".yaml")))
+         (yaml-file (concat base ".yaml"))
+         (xml-file (concat base ".xml")))
     (when (file-exists-p json-file)
       (delete-file json-file))
     (when (file-exists-p yaml-file)
-      (delete-file yaml-file))))
+      (delete-file yaml-file))
+    (when (file-exists-p xml-file)
+      (delete-file xml-file))))
 
 (defun eldc-test--with-data-file (filename callback)
   "Open test data FILENAME, execute CALLBACK, then clean up outputs."
@@ -62,6 +65,12 @@
   "Read YAML-FILE and return contents as string."
   (with-temp-buffer
     (insert-file-contents yaml-file)
+    (buffer-string)))
+
+(defun eldc-test--read-xml-file (xml-file)
+  "Read XML-FILE and return contents as string."
+  (with-temp-buffer
+    (insert-file-contents xml-file)
     (buffer-string)))
 
 ;;; Tests for Helper Functions
@@ -557,6 +566,179 @@
          ;; Cleanup: remove test hooks
          (setq eldc-json-before-export-hook nil
                eldc-json-after-export-hook nil))))))
+
+;;; Tests for XML Conversion (requires converter)
+
+(ert-deftest eldc-test-xml-simple ()
+  "Test XML conversion with simple.el."
+  :tags '(:integration)
+  (eldc-test--with-data-file
+   "simple.el"
+   (lambda ()
+     (let ((xml-file (eldc--get-output-filename "xml"))
+           (d (eldc-xml)))
+       ;; Wait for deferred to complete
+       (deferred:sync! d)
+       (should (file-exists-p xml-file))
+       (let ((xml-content (eldc-test--read-xml-file xml-file)))
+         (should (string-match-p "<root>" xml-content))
+         (should (string-match-p "<name>test-package</name>" xml-content))
+         (should (string-match-p "<version>1\\.0\\.0</version>" xml-content))
+         (should (string-match-p "</root>" xml-content)))))))
+
+(ert-deftest eldc-test-xml-nested ()
+  "Test XML conversion with nested.el."
+  :tags '(:integration)
+  (eldc-test--with-data-file
+   "nested.el"
+   (lambda ()
+     (let ((xml-file (eldc--get-output-filename "xml"))
+           (d (eldc-xml)))
+       ;; Wait for deferred to complete
+       (deferred:sync! d)
+       (should (file-exists-p xml-file))
+       (let ((xml-content (eldc-test--read-xml-file xml-file)))
+         (should (string-match-p "<root>" xml-content))
+         (should (string-match-p "<name>nested-test</name>" xml-content))
+         (should (string-match-p "<config>" xml-content))
+         (should (string-match-p "</root>" xml-content)))))))
+
+(ert-deftest eldc-test-xml-package ()
+  "Test XML conversion with package.el."
+  :tags '(:integration)
+  (eldc-test--with-data-file
+   "package.el"
+   (lambda ()
+     (let ((xml-file (eldc--get-output-filename "xml"))
+           (d (eldc-xml)))
+       ;; Wait for deferred to complete
+       (deferred:sync! d)
+       (should (file-exists-p xml-file))
+       (let ((xml-content (eldc-test--read-xml-file xml-file)))
+         (should (string-match-p "<root>" xml-content))
+         (should (string-match-p "<name>eldc-converter</name>" xml-content))
+         (should (string-match-p "<version>0\\.0\\.1</version>" xml-content))
+         (should (string-match-p "</root>" xml-content)))))))
+
+(ert-deftest eldc-test-xml-dynamic ()
+  "Test XML conversion with dynamic.el."
+  :tags '(:integration)
+  (eldc-test--with-data-file
+   "dynamic.el"
+   (lambda ()
+     (let ((xml-file (eldc--get-output-filename "xml"))
+           (d (eldc-xml)))
+       ;; Wait for deferred to complete
+       (deferred:sync! d)
+       (should (file-exists-p xml-file))
+       (let ((xml-content (eldc-test--read-xml-file xml-file)))
+         (should (string-match-p "<root>" xml-content))
+         (should (string-match-p "<name>dynamic-project</name>" xml-content))
+         (should (string-match-p "<version>2\\.0\\.0</version>" xml-content))
+         (should (string-match-p "<build>42</build>" xml-content))
+         (should (string-match-p "</root>" xml-content)))))))
+
+(ert-deftest eldc-test-xml-boolean-values ()
+  "Test that t and :json-false encode correctly to XML booleans."
+  :tags '(:integration)
+  (eldc-test--with-data-file
+   "booleans.el"
+   (lambda ()
+     (let ((xml-file (eldc--get-output-filename "xml"))
+           (d (eldc-xml)))
+       ;; Wait for deferred to complete
+       (deferred:sync! d)
+       (should (file-exists-p xml-file))
+       (let ((xml-content (eldc-test--read-xml-file xml-file)))
+         (message "Generated XML:\n%s" xml-content)
+         ;; Check that booleans are properly represented
+         (should (string-match-p "<enabled>true</enabled>" xml-content))
+         (should (string-match-p "<disabled>false</disabled>" xml-content)))))))
+
+;;; Tests for XML Hooks
+
+(ert-deftest eldc-test-xml-before-export-hook ()
+  "Test that eldc-xml-before-export-hook is called with correct arguments."
+  :tags '(:integration)
+  (eldc-test--with-data-file
+   "simple.el"
+   (lambda ()
+     (let ((hook-called nil)
+           (hook-data nil)
+           (hook-file nil))
+       ;; Add test hook
+       (add-hook 'eldc-xml-before-export-hook
+                 (lambda (data file)
+                   (setq hook-called t
+                         hook-data data
+                         hook-file file)))
+       (unwind-protect
+           (progn
+             (let ((d (eldc-xml)))
+               ;; Wait for deferred to complete
+               (deferred:sync! d))
+             ;; Verify hook was called
+             (should hook-called)
+             ;; Verify data is JSON-encodable object
+             (should hook-data)
+             (should (equal (alist-get 'name hook-data) "test-package"))
+             ;; Verify file path is correct
+             (should hook-file)
+             (should (string-suffix-p "simple.xml" hook-file)))
+         ;; Cleanup: remove test hook
+         (setq eldc-xml-before-export-hook nil))))))
+
+(ert-deftest eldc-test-xml-after-export-hook ()
+  "Test that eldc-xml-after-export-hook is called after successful export."
+  :tags '(:integration)
+  (eldc-test--with-data-file
+   "simple.el"
+   (lambda ()
+     (let ((hook-called nil)
+           (hook-file nil))
+       ;; Add test hook
+       (add-hook 'eldc-xml-after-export-hook
+                 (lambda (file)
+                   (setq hook-called t
+                         hook-file file)))
+       (unwind-protect
+           (progn
+             (let ((d (eldc-xml)))
+               ;; Wait for deferred to complete
+               (deferred:sync! d))
+             ;; Verify hook was called
+             (should hook-called)
+             ;; Verify file exists
+             (should hook-file)
+             (should (file-exists-p hook-file))
+             (should (string-suffix-p "simple.xml" hook-file)))
+         ;; Cleanup: remove test hook
+         (setq eldc-xml-after-export-hook nil))))))
+
+(ert-deftest eldc-test-xml-hooks-execution-order ()
+  "Test that XML hooks execute in correct order (before, then after)."
+  :tags '(:integration)
+  (eldc-test--with-data-file
+   "simple.el"
+   (lambda ()
+     (let ((execution-order nil))
+       ;; Add hooks that record execution order
+       (add-hook 'eldc-xml-before-export-hook
+                 (lambda (data file)
+                   (push 'before execution-order)))
+       (add-hook 'eldc-xml-after-export-hook
+                 (lambda (file)
+                   (push 'after execution-order)))
+       (unwind-protect
+           (progn
+             (let ((d (eldc-xml)))
+               ;; Wait for deferred to complete
+               (deferred:sync! d))
+             ;; Verify hooks executed in correct order
+             (should (equal (reverse execution-order) '(before after))))
+         ;; Cleanup: remove test hooks
+         (setq eldc-xml-before-export-hook nil
+               eldc-xml-after-export-hook nil))))))
 
 (provide 'eldc-test)
 ;;; eldc-test.el ends here

@@ -20,12 +20,12 @@
 ;; Modified: 2025-11-23
 ;; Version: 0.4.0
 ;; Package-Requires: ((emacs "25.1") (deferred "0.5.1"))
-;; Keywords: tools, data, conversion, yaml, json
+;; Keywords: tools, data, conversion, yaml, json, xml
 ;; URL: https://github.com/gicrisf/eldc
 
 ;;; Commentary:
 
-;; Convert Emacs Lisp data structures to JSON and YAML files.
+;; Convert Emacs Lisp data structures to JSON, YAML, and XML files.
 ;;
 ;; Particularly useful to manage configuration files (package.json, GitHub
 ;; Actions, etc.) by writing them in Emacs Lisp and exporting to standard
@@ -35,12 +35,13 @@
 ;; Quick start:
 ;;   1. Create a .el file with an alist or plist:
 ;;      '(:name "my-app" :version "1.0.0")
-;;   2. Run M-x eldc-json or M-x eldc-yaml
+;;   2. Run M-x eldc-json, M-x eldc-yaml, or M-x eldc-xml
 ;;   3. Output file is created automatically (foo.el -> foo.json)
 ;;
 ;; Features:
 ;; - JSON conversion using built-in json-encode (no dependencies)
 ;; - YAML conversion via optional binary converter (auto-downloads on first use)
+;; - XML conversion via optional binary converter (auto-downloads on first use)
 ;; - Dynamic data generation using any Emacs Lisp expression
 ;; - Hooks for pre/post-processing
 ;;
@@ -77,6 +78,9 @@
   "Preferred file extension for YAML output files.
 Common alternatives: \"yaml\" or \"yml\".")
 
+(defvar eldc-xml-extension "xml"
+  "Preferred file extension for XML output files.")
+
 (defvar eldc-json-before-export-hook nil
   "Hook run before exporting to JSON.
 Functions are called with two arguments: DATA and OUTPUT-FILE.
@@ -100,6 +104,18 @@ Hook functions can modify the data or perform side effects.")
   "Hook run after successfully exporting to YAML.
 Functions are called with one argument: OUTPUT-FILE.
 OUTPUT-FILE is the path to the generated YAML file.")
+
+(defvar eldc-xml-before-export-hook nil
+  "Hook run before exporting to XML.
+Functions are called with two arguments: DATA and OUTPUT-FILE.
+DATA is the JSON-encodable Emacs Lisp object to be exported.
+OUTPUT-FILE is the target file path.
+Hook functions can modify the data or perform side effects.")
+
+(defvar eldc-xml-after-export-hook nil
+  "Hook run after successfully exporting to XML.
+Functions are called with one argument: OUTPUT-FILE.
+OUTPUT-FILE is the path to the generated XML file.")
 
 ;;; Helper Functions
 
@@ -228,6 +244,57 @@ Requires JSON-to-YAML converter binary."
           (progn
             (eldc-download-binary)
             (message "Binary download started. Please wait and retry eldc-yaml once download completes."))
+        (message "No converter binary found. Download from %s or build from source." eldc-converter-url)))))
+
+;;;###autoload
+(defun eldc-xml ()
+  "Export data from buffer to XML file.
+Parses the last s-expression in the buffer as a JSON-encodable object.
+Output filename is derived from current buffer's filename.
+Example: config.el -> config.xml
+Requires JSON-to-XML converter binary."
+  (interactive)
+  (let* ((data (eldc--get-alist))
+         (output-file (eldc--get-output-filename eldc-xml-extension))
+         (converter (eldc--find-converter)))
+    (run-hook-with-args 'eldc-xml-before-export-hook data output-file)
+    (if converter
+        (let* ((json-encoding-pretty-print nil)  ; Compact JSON
+               (json-content (json-encode data))
+               ;; Base64 encode JSON to avoid shell escaping issues
+               (json-base64 (base64-encode-string json-content t))
+               (default-directory (file-name-directory output-file)))
+          (deferred:$
+           ;; Pass base64-encoded JSON with --xml flag as command line argument
+           (apply 'deferred:process (append converter (list "--xml" json-base64)))
+           (deferred:nextc it
+                           (lambda (output)
+                             ;; Decode base64 output to get XML content
+                             (let ((xml-content (base64-decode-string output)))
+                               ;; Write XML output to file with prettification
+                               (with-temp-file output-file
+                                 (insert xml-content)
+                                 ;; Prettify XML using nxml-mode
+                                 (let ((begin (point-min))
+                                       (end (point-max)))
+                                   (save-excursion
+                                     (nxml-mode)
+                                     (goto-char begin)
+                                     (while (search-forward-regexp "\>[ \\t]*\<" nil t)
+                                       (backward-char)
+                                       (insert "\n")
+                                       (setq end (1+ end)))
+                                     (indent-region begin end))))
+                               (run-hook-with-args 'eldc-xml-after-export-hook output-file)
+                               (message "Generated %s successfully!" output-file))))
+           (deferred:error it
+                           (lambda (err)
+                             (message "Error running converter: %s" err)))))
+      ;; Binary not found - attempt to download it
+      (if (yes-or-no-p "Converter binary not found.  Download it now? ")
+          (progn
+            (eldc-download-binary)
+            (message "Binary download started. Please wait and retry eldc-xml once download completes."))
         (message "No converter binary found. Download from %s or build from source." eldc-converter-url)))))
 
 (provide 'eldc)
