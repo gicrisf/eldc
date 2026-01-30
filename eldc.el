@@ -66,6 +66,10 @@
   :group 'eldc)
 
 
+(defvar eldc--available-binaries
+  '("linux-x86_64")
+  "List of available pre-built binary architectures.")
+
 (defvar eldc-binary-dir
   (expand-file-name "bin" user-emacs-directory)
   "Directory to store downloaded converter binaries.")
@@ -128,49 +132,50 @@ Returns the evaluated alist or signals an error if parsing fails."
     "eldc-j2y"))
 
 (defun eldc--find-converter ()
-  "Find available JSON-to-YAML converter binary in eldc-binary-dir.
+  "Find available JSON-to-YAML converter binary.
+Checks `eldc-binary-dir' first, then falls back to PATH lookup.
 Returns converter command list if found, nil otherwise."
   (let ((binary-path (expand-file-name (eldc--binary-name) eldc-binary-dir)))
-    (when (file-exists-p binary-path)
-      (list binary-path))))
+    (if (file-exists-p binary-path)
+        (list binary-path)
+      (let ((found (executable-find "eldc-j2y")))
+        (when found (list found))))))
 
 ;;; Public API
 
 ;;;###autoload
 (defun eldc-download-binary ()
   "Download the eldc-j2y converter binary from GitHub releases.
-Automatically detects platform and downloads the appropriate binary
-to eldc-binary-dir."
+Presents a list of available pre-built binaries to choose from,
+or instructions to compile from source using cargo."
   (interactive)
-  (let* ((binary-name (eldc--binary-name))
-         (download-url (concat eldc-converter-url binary-name))
-         (target-dir eldc-binary-dir)
-         (target-path (expand-file-name binary-name target-dir)))
-
-    ;; Create binary directory if it doesn't exist
-    (unless (file-directory-p target-dir)
-      (make-directory target-dir t))
-
-    (message "Downloading %s from %s..." binary-name download-url)
-
-    (url-retrieve
-     download-url
-     (lambda (status target-path binary-name)
-       (if (plist-get status :error)
-           (message "Failed to download binary: %s" (plist-get status :error))
-         ;; Skip HTTP headers
-         (goto-char (point-min))
-         (re-search-forward "\n\n")
-         ;; Write binary content to file
-         (let ((binary-content (buffer-substring (point) (point-max))))
-           (with-temp-file target-path
-             (set-buffer-multibyte nil)
-             (insert binary-content))
-           ;; Set executable permissions on Unix-like systems
-           (unless (eq system-type 'windows-nt)
-             (set-file-modes target-path #o755))
-           (message "Successfully downloaded %s to %s" binary-name target-path))))
-     (list target-path binary-name))))
+  (let* ((choices (append eldc--available-binaries '("Compile from source")))
+         (selection (completing-read "Select binary architecture: " choices nil t)))
+    (if (string= selection "Compile from source")
+        (message "Run: cargo install --git https://github.com/gicrisf/eldc eldc-j2y\nThe binary will be installed to your cargo bin directory on PATH.")
+      (let* ((binary-name (eldc--binary-name))
+             (asset-name (concat "eldc-j2y-" selection))
+             (download-url (concat eldc-converter-url asset-name))
+             (target-dir eldc-binary-dir)
+             (target-path (expand-file-name binary-name target-dir)))
+        (unless (file-directory-p target-dir)
+          (make-directory target-dir t))
+        (message "Downloading %s from %s..." asset-name download-url)
+        (url-retrieve
+         download-url
+         (lambda (status target-path binary-name)
+           (if (plist-get status :error)
+               (message "Failed to download binary: %s" (plist-get status :error))
+             (goto-char (point-min))
+             (re-search-forward "\n\n")
+             (let ((binary-content (buffer-substring (point) (point-max))))
+               (with-temp-file target-path
+                 (set-buffer-multibyte nil)
+                 (insert binary-content))
+               (unless (eq system-type 'windows-nt)
+                 (set-file-modes target-path #o755))
+               (message "Successfully downloaded %s to %s" binary-name target-path))))
+         (list target-path binary-name))))))
 
 ;;;###autoload
 (defun eldc-json ()
@@ -223,12 +228,7 @@ Requires JSON-to-YAML converter binary."
            (deferred:error it
                            (lambda (err)
                              (message "Error running converter: %s" err)))))
-      ;; Binary not found - attempt to download it
-      (if (yes-or-no-p "Converter binary not found.  Download it now? ")
-          (progn
-            (eldc-download-binary)
-            (message "Binary download started. Please wait and retry eldc-yaml once download completes."))
-        (message "No converter binary found. Download from %s or build from source." eldc-converter-url)))))
+      (message "Converter binary not found. Run M-x eldc-download-binary to install it."))))
 
 (provide 'eldc)
 ;;; eldc.el ends here

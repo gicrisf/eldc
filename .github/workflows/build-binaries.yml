@@ -17,11 +17,13 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
     - name: Build binary
       run: cargo build --release --manifest-path eldc-j2y/Cargo.toml
+    - name: Rename binary
+      run: mv eldc-j2y/target/release/eldc-j2y eldc-j2y/target/release/eldc-j2y-linux-x86_64
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: eldc-j2y
-        path: eldc-j2y/target/release/eldc-j2y
+        name: eldc-j2y-linux-x86_64
+        path: eldc-j2y/target/release/eldc-j2y-linux-x86_64
   release:
     name: Create Release
     needs: build
@@ -37,7 +39,7 @@ jobs:
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        files: artifacts/eldc-j2y/eldc-j2y
+        files: artifacts/eldc-j2y-linux-x86_64/eldc-j2y-linux-x86_64
         draft: false
         prerelease: false
         generate_release_notes: true
