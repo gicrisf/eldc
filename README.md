@@ -96,7 +96,35 @@ Since **eldc** uses Emacs' native JSON encoder, follow these conventions for pro
 
 ## Installation
 
-Install the package using your preferred method:
+Install the package using your preferred method.
+
+From [MELPA](https://melpa.org/) using `package.el`:
+
+```
+M-x package-install RET eldc RET
+```
+
+Using Straight:
+
+```elisp
+(straight-use-package 'eldc)
+```
+
+With use-package:
+
+``` elisp
+(use-package eldc
+  :straight t
+  ...)
+```
+
+Using Doom Emacs:
+
+``` elisp
+(package! eldc)
+```
+
+Directly from the source repo instead of MELPA:
 
 ```elisp
 ;; Using straight.el
@@ -106,9 +134,18 @@ Install the package using your preferred method:
 ;; Or use-package with straight
 (use-package eldc
   :straight (eldc :type git :host github :repo "gicrisf/eldc"))
+  
+;; Or Doom
+(package! eldc :recipe (:host github :repo "gicrisf/eldc"))
 ```
 
-**For YAML conversion:** The package will automatically download the required binary converter on first use. Alternatively, download it manually from [GitHub Releases](https://github.com/gicrisf/eldc/releases) and place it in `~/.emacs.d/bin/`.
+**For YAML conversion:** The package will automatically prompt you to `M-x eldc-download-binary` (which downloads the required binary converter). Alternatively, download it manually from [GitHub Releases](https://github.com/gicrisf/eldc/releases) and place it in `~/.emacs.d/bin/`. If your architecture is not among those for which I have precompiled binaries, you can also compile it yourself:
+
+```
+cargo install --git https://github.com/gicrisf/eldc eldc-j2y
+```
+
+In this case, you will need the Rust toolchain on your system.
 
 ## Real-World Example: GitHub Actions Workflow
 
